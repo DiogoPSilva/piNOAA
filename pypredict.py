@@ -16,18 +16,21 @@ def aoslos(satname,minEl):
         aosTime=int(lines[0].split()[0])
         losTime=int(lines[-2].split()[0])
         maxEl = []
+        latN = []
         size = len(lines) - 1
 
         for i in range(size):
             maxEl.append(int(lines[i].split()[4]))
-            
+            latN.append(int(lines[i].split()[7]))
             
         while(max(maxEl) < minEl):
             
             lines.clear()
+            latN.clear()
             
             nextPredict = losTime + 60
             lines = subprocess.check_output(["predict","-p",satname,str(nextPredict)]).split(b"\n")
+            #print(lines)
 
             aosTime=int(lines[0].split()[0])
             losTime=int(lines[-2].split()[0])
@@ -35,9 +38,18 @@ def aoslos(satname,minEl):
             size = len(lines) - 1
 
             for i in range(size):
-                maxEl.append(int(lines[i].split()[4]))    
+                maxEl.append(int(lines[i].split()[4]))
+                latN.append(int(lines[i].split()[7]))
+                
+        if (latN[0] < latN[1]):
+            #South to North
+            direction = 1 
+        else:
+            #North to South
+            direction = 0
+            
         if losTime>aosTime:
-            return (aosTime,losTime,max(maxEl))
+            return (aosTime,losTime,max(maxEl),direction)
             
     except Exception:
         pass

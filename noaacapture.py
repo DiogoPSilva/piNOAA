@@ -2,15 +2,21 @@ import time
 import pypredict
 import subprocess
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from PIL import Image
+
+firstRun = 1
 
 satellites = ['NOAA 18','NOAA 19','NOAA 15']
 sat = ['noaa_18','noaa_19','noaa_15']
 freqs = [137912500, 137100000, 137620000]
-sample = '1000000'
+sample = '60000'
 wavrate='11025'
+gain = 0
+ppm = 62
 minEl = 30
 
+                     
 def runForDuration(cmdline, duration):
     try:
         child = subprocess.Popen(cmdline)
@@ -25,12 +31,11 @@ def recordFM(freq, fname, duration):
     cmdline = ['timeout ',str(duration),\
                ' rtl_fm ',\
                '-f ',str(freq),\
-               ' -M ',' fm -N '\
-               ' -s ',sample,\
-               ' -p',' 62'\
-               ' -g',' 20',\
+               ' -M ','fm',\
+               ' -s ',str(sample),\
+               ' -p ',str(ppm),\
+               ' -g ',str(gain),\
                ' -F',' 9',\
-               ' -r',' 32k '\
                ' -A',' fast',\
                ' -E',' deemp ',\
                fnameRAW+'.raw']
@@ -39,16 +44,22 @@ def recordFM(freq, fname, duration):
     os.system(new_cmdline)
 
 def transcode(fname):
-    cmdline = ['sox ','-t ','raw ','-r ',sample,' -es ','-b16 ','-c1 ','-V1 ',fnameRAW+'.raw ',fnameWAV+'.wav rate ', wavrate]
+    cmdline = ['sox ','-t ','raw ','-r ',str(sample),' -es ','-b16 ','-c1 ','-V1 ',fnameRAW+'.raw ',fnameWAV+'.wav rate ', str(wavrate)]
     new_cmdline = ''.join(cmdline)
     os.system(new_cmdline)
 
 def decode(fname,currentDT,satel):
     
-    cmdline = ['/home/pi/Desktop/piNOAA/noaa-apt -T /home/pi/.predict/predict.tle -s ',satel,' -t ',currentDT,' ',fnameWAV+'.wav -o ',fnamePNG+'.png']
+    cmdline = ['/home/pi/Desktop/piNOAA/noaa-apt -T /home/pi/.predict/predict.tle -m yes -s ',satel,' -t ',currentDT,' ',fnameWAV+'.wav -o ',fnamePNG+'.png']
+    cmdline = ['/home/pi/Desktop/piNOAA/noaa-apt -m yes -s ',satel,' -t ',currentDT,' ',fnameWAV+'.wav -o ',fnamePNG+'.png']
     new_cmdline = ''.join(cmdline)
     os.system(new_cmdline)
-    cmdline = ['/home/pi/Desktop/piNOAA/noaa-apt -T /home/pi/.predict/predict.tle -m yes -s ',satel,' -t ',currentDT,' ',fnameWAV+'.wav -o ',fnamePNG+'_map.png']
+    
+    #/home/pi/Downloads/noaa-apt -T /home/pi/.predict/predict.tle -m yes -s noaa_18 -t 2021-11-17T11:00:11-00:00 NOAA_18_1637146812.wav -o NOAA_18_1637146812.png
+    
+def decode_nomap(fname,currentDT,satel):
+    
+    cmdline = ['/home/pi/Desktop/piNOAA/noaa-apt -T /home/pi/.predict/predict.tle -s ',satel,' -t ',currentDT,' ',fnameWAV+'.wav -o ',fnamePNGNOMAP+'.png']
     new_cmdline = ''.join(cmdline)
     os.system(new_cmdline)
     
@@ -86,13 +97,16 @@ def convertShort(seconds):
     seconds %= 60
       
     return "%d:%02d:%02d" % (hour, minutes, seconds)
+    
+
 while True:
-    (satName, freq, (aosTime, losTime,maxEl), satel) = findNextPass()
+    (satName, freq, (aosTime, losTime, maxEl, direction), satel) = findNextPass()
+    #Direction = 1 --> South to North
+    #Direction = 0 --> North to South
     now = time.time()
     towait = aosTime-now
-    #print("Max Elevation: ",maxEl)
     DT = datetime.now()
-    currentDT = DT.strftime('%d-%m-%Y %H:%M:%S')
+    
     while towait>0:
         now = time.time()
         towait = aosTime-now
@@ -101,32 +115,44 @@ while True:
             break
         else:
             os.system("clear")
-            print("Minimum elevation allowed:",minEl,"degrees\n"+convertShort(towait),"for "+satName,"with max elevation of",maxEl,"degrees")
+            
+            if (direction == 1):
+                print("Minimum elevation allowed:",minEl,"degrees\n"+convertShort(towait),"for "+satName,"with max elevation of",maxEl,"degrees\nSouth to North")
+            else:
+                print("Minimum elevation allowed:",minEl,"degrees\n"+convertShort(towait),"for "+satName,"with max elevation of",maxEl,"degrees\nNorth to South")
             time.sleep(1)
         
-        
-#         DT = datetime.now()
-#         currentDT = DT.strftime('%d-%m-%Y %H:%M:%S')
-#         print(currentDT+": Waiting "+convert(towait)+" for "+satName)
-#         if towait >= 3600:
-#             time.sleep(3600)
-#             os.system("clear")
-#         else:
-#             time.sleep(towait)
-        
-    # dir= sat name and filename = start time
-    DT = datetime.now()
-    currentDT = DT.strftime('%Y-%m-%dT%H:%M:%S-00:00')
-    timestamp = DT.strftime('%Y%m%d_%H%M%S')
+    passageTimestamp = time.strftime('%Y-%m-%dT%H:%M:%S%z', time.localtime(aosTime))
+    passageTimestamp = passageTimestamp[:22] + ':' + passageTimestamp[22:]
+    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(aosTime))
     
-    fnameRAW='/home/pi/Desktop/capture/RAW/'+satel+'_'+timestamp+'_El'+str(maxEl)
-    fnamePNG='/home/pi/Desktop/capture/PNG/'+satel+'_'+timestamp+'_El'+str(maxEl)
-    fnameWAV='/home/pi/Desktop/capture/WAV/'+satel+'_'+timestamp+'_El'+str(maxEl)
-    print("beginning pass "+satName+" predicted end "+str(losTime))
+    fname = satel+'_'+timestamp+'_El'+str(maxEl)
+    fnameRAW='/home/pi/Desktop/piNOAA/capture/RAW/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnamePNG='/home/pi/Desktop/piNOAA/capture/PNG/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnamePNGNOMAP='/home/pi/Desktop/piNOAA/capture/PNGNOMAP/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnameWAV='/home/pi/Desktop/piNOAA/capture/WAV/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    
+    endTime = time.strftime('%H:%M:%S', time.localtime(losTime))
+    print("beginning pass "+satName+" predicted end "+endTime)
 
     recordWAV(freq,fnameRAW,losTime-aosTime)
-    decode(fnameWAV,currentDT,satel) # make picture
-    # spectrum(fname,losTime-aosTime)
+    decode(fnameWAV,passageTimestamp,satel) # make picture
+    decode_nomap(fnameWAV,passageTimestamp,satel) # make picture without map
+    
     print("finished pass "+satName+" at "+str(time.time()))
-    time.sleep(60.0)
+    
+    if (direction == 1):
+        rotImage  = Image.open(fnamePNG+'.png')
+        rotImage2  = Image.open(fnamePNGNOMAP+'.png')
+        # Rotate it by 180 degrees
+        rotImage = rotImage.rotate(180)
+        rotImage2 = rotImage2.rotate(180)
+        rotImage.save(fnamePNG+'.png')
+        rotImage2.save(fnamePNGNOMAP+'.png')
+        
+    cleanRAW ='rm '+fnameRAW+'.raw'
+    os.system(cleanRAW)
+    cleanWAV ='rm '+fnameWAV+'.wav'
+    os.system(cleanWAV)
+    time.sleep(10.0)
 
