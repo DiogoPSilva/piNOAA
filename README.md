@@ -1,4 +1,4 @@
-rtlsdr-automated-wxsat-capture
+piNOAA
 ==============================
 
 Automate Recording of Low Earth Orbit NOAA Weather Satellites
@@ -39,11 +39,11 @@ recording and sox to convert the file to .wav
 
 ###pypredict.py
 This is a short python module for extracting the AOS/LOS times
-of the next pass for a specified satellite.  It calls predict -p and extracts
+of the next pass for a specified satellite and with a minimum  max elevation.  It calls predict -p and extracts
 the times from the first and last lines.
 
-###update-keps.sh
-This is a short shell script to update the keps, which are orbital
-parameters needed by the predict program.  It is mostly copied from the PREDICT man
-page. PREDICT was written by John Magliacane, KD2BD and released under the
+###schedule_all.sh
+This is a short shell script to update the tle, which are orbital
+parameters needed by the predict program.
+PREDICT was written by John Magliacane, KD2BD and released under the
 GPL license.
