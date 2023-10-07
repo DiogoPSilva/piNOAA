@@ -3,7 +3,9 @@ import pypredict
 import subprocess
 import os
 from datetime import datetime, timezone
+import tweepy
 from PIL import Image
+from smb.SMBConnection import SMBConnection
 
 firstRun = 1
 
@@ -16,6 +18,24 @@ gain = 0
 ppm = 62
 minEl = 30
 
+# Authenticate to Twitter
+auth = tweepy.OAuthHandler("AuthHandler")
+auth.set_access_token("Token")
+
+api = tweepy.API(auth)
+
+# Authenticate SMB
+userID = 'ID'
+password = 'password'
+client_machine_name = 'pi'
+
+server_name = 'server_name'
+server_ip = '192.168.xxx.xxx'
+
+domain_name = ''
+
+conn = SMBConnection(userID, password, client_machine_name, server_name, domain=domain_name, use_ntlm_v2=True,
+                     is_direct_tcp=True)
                      
 def runForDuration(cmdline, duration):
     try:
@@ -27,7 +47,6 @@ def runForDuration(cmdline, duration):
         print("OS Error: "+e.strerror)
 
 def recordFM(freq, fname, duration):
-    # still experimenting with options - unsure as to best settings
     cmdline = ['timeout ',str(duration),\
                ' rtl_fm ',\
                '-f ',str(freq),\
@@ -69,10 +88,6 @@ def recordWAV(freq,fname,duration):
     recordFM(freq,fname,duration)
     transcode(fname)
 
-def spectrum(fname,duration):
-    cmdline = ['rtl_power','-f','137000000:138000000:1000','-i','1m','-g','40',fname+'.csv']
-    runForDuration(cmdline,duration)
-
 def findNextPass():
     predictions = [pypredict.aoslos(s,minEl) for s in satellites]
     aoses = [p[0] for p in predictions]
@@ -98,6 +113,8 @@ def convertShort(seconds):
       
     return "%d:%02d:%02d" % (hour, minutes, seconds)
     
+    
+
 
 while True:
     (satName, freq, (aosTime, losTime, maxEl, direction), satel) = findNextPass()
@@ -105,7 +122,9 @@ while True:
     #Direction = 0 --> North to South
     now = time.time()
     towait = aosTime-now
+    #print("Max Elevation: ",maxEl)
     DT = datetime.now()
+    #currentDT = DT.strftime('%d-%m-%Y %H:%M:%S')
     
     while towait>0:
         now = time.time()
@@ -127,10 +146,10 @@ while True:
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(aosTime))
     
     fname = satel+'_'+timestamp+'_El'+str(maxEl)
-    fnameRAW='/home/pi/Desktop/piNOAA/capture/RAW/'+satel+'_'+timestamp+'_El'+str(maxEl)
-    fnamePNG='/home/pi/Desktop/piNOAA/capture/PNG/'+satel+'_'+timestamp+'_El'+str(maxEl)
-    fnamePNGNOMAP='/home/pi/Desktop/piNOAA/capture/PNGNOMAP/'+satel+'_'+timestamp+'_El'+str(maxEl)
-    fnameWAV='/home/pi/Desktop/piNOAA/capture/WAV/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnameRAW='/home/pi/Desktop/capture/RAW/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnamePNG='/home/pi/Desktop/capture/PNG/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnamePNGNOMAP='/home/pi/Desktop/capture/PNGNOMAP/'+satel+'_'+timestamp+'_El'+str(maxEl)
+    fnameWAV='/home/pi/Desktop/capture/WAV/'+satel+'_'+timestamp+'_El'+str(maxEl)
     
     endTime = time.strftime('%H:%M:%S', time.localtime(losTime))
     print("beginning pass "+satName+" predicted end "+endTime)
@@ -150,9 +169,39 @@ while True:
         rotImage.save(fnamePNG+'.png')
         rotImage2.save(fnamePNGNOMAP+'.png')
         
+    # Upload image
+    img = fnamePNG+'.png'
+    media = api.media_upload(img)
+
+    # Post tweet with image
+    tweetTime = DT.strftime('%d/%m/%Y at %H:%M:%S')
+    tweetTime = time.strftime('%d/%m/%Y at %H:%M:%S', time.localtime(aosTime))
+    if (direction == 1):
+        tweet = 'South to North\nImage received on '+tweetTime+' with a max elevation of '+str(maxEl)+' degrees from '+satName+'\nReceived at a sample rate of '+str(4*int(sample))+' S/s, a ppm correction of '+str(ppm)+' and a gain of '+str(gain)+'dB'
+    else:
+        tweet = 'North to South\nImage received on '+tweetTime+' with a max elevation of '+str(maxEl)+' degrees from '+satName+'\nReceived at a sample rate of '+str(4*int(sample))+' S/s, a ppm correction of '+str(ppm)+' and a gain of '+str(gain)+'dB'
+    post_result = api.update_status(status=tweet, media_ids=[media.media_id])
+    
+    if firstRun == 1:
+        conn.connect(server_ip, 445)
+        firstRun = 0
+
+    with open(fnamePNGNOMAP+'.png', 'rb') as file:
+        conn.storeFile('share', 'nomap/'+fname+'.png', file)
+    with open(fnamePNG+'.png', 'rb') as file:
+        conn.storeFile('share', 'map/'+fname+'.png', file)
+    with open(fnameWAV+'.wav', 'rb') as file:
+        conn.storeFile('share', 'wav/'+fname+'.wav', file)
+
+    #conn.close()
+    
     cleanRAW ='rm '+fnameRAW+'.raw'
     os.system(cleanRAW)
     cleanWAV ='rm '+fnameWAV+'.wav'
     os.system(cleanWAV)
+    cleanPNG ='rm '+fnamePNG+'.png'
+    os.system(cleanPNG)
+    cleanPNGNOMAP ='rm '+fnamePNGNOMAP+'.png'
+    os.system(cleanPNGNOMAP)
     time.sleep(10.0)
 
