@@ -2,7 +2,7 @@ piNOAA
 ==============================
 
 Automate Recording of Low Earth Orbit NOAA Weather Satellites
-based on:https://github.com/DrPaulBrewer/rtlsdr-automated-wxsat-capture
+based on: https://github.com/DrPaulBrewer/rtlsdr-automated-wxsat-capture
 
 These are some automation scripts I am developing in python for weather satellite hobbyist use.
 
@@ -10,7 +10,7 @@ License:  GPLv2 or any later version
 
 assumptions: Linux-based computer, rtl-sdr usb dongle, stationary antenna, experienced python user
 
-goal:  automatically record wav, decode and post om twitter de result
+goal:  automatically record wav, decode and post on twitter the result
 
 prerequistes:  working rtl-sdr, predict (text based, not gpredict) setup with correct ground station coordinates, sox
 
@@ -36,7 +36,7 @@ mv dotpredict-predict.tle ~/.predict/predict.tle
 ###noaacapture.py
 This is the main python script.  It will calculate the time
 of the next pass for recording.  It expects to call rtl_fm to do the
-recording and sox to convert the file to .wav
+recording and sox to convert the file to .wav and nooa-apt decoder to decode it into an image
 
 ###pypredict.py
 This is a short python module for extracting the AOS/LOS times
